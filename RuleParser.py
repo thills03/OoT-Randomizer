@@ -61,6 +61,8 @@ class Rule_AST_Transformer(ast.NodeTransformer):
         # lazy load aliases
         if not rule_aliases:
             load_aliases()
+        # final rule cache
+        self.rule_cache = {}
 
 
     def visit_Name(self, node):
@@ -373,25 +375,28 @@ class Rule_AST_Transformer(ast.NodeTransformer):
 
 
     def make_access_rule(self, body):
-        # requires consistent iteration on dicts
-        kwargs = [ast.arg(arg=k) for k in kwarg_defaults.keys()]
-        kwd = list(map(ast.Constant, kwarg_defaults.values()))
-        try:
-            return eval(compile(
-                ast.fix_missing_locations(
-                    ast.Expression(ast.Lambda(
-                        args=ast.arguments(
-                            posonlyargs=[],
-                            args=[ast.arg(arg='state')],
-                            defaults=[],
-                            kwonlyargs=kwargs,
-                            kw_defaults=kwd),
-                        body=body))),
-                '<string>', 'eval'),
-                # globals/locals. if undefined, everything in the namespace *now* would be allowed
-                allowed_globals)
-        except TypeError as e:
-            raise Exception('Parse Error: %s' % e, self.current_spot.name, ast.dump(body, False))
+        rule_str = ast.dump(body, False)
+        if rule_str not in self.rule_cache:
+            # requires consistent iteration on dicts
+            kwargs = [ast.arg(arg=k) for k in kwarg_defaults.keys()]
+            kwd = list(map(ast.Constant, kwarg_defaults.values()))
+            try:
+                self.rule_cache[rule_str] = eval(compile(
+                    ast.fix_missing_locations(
+                        ast.Expression(ast.Lambda(
+                            args=ast.arguments(
+                                posonlyargs=[],
+                                args=[ast.arg(arg='state')],
+                                defaults=[],
+                                kwonlyargs=kwargs,
+                                kw_defaults=kwd),
+                            body=body))),
+                    '<string>', 'eval'),
+                    # globals/locals. if undefined, everything in the namespace *now* would be allowed
+                    allowed_globals)
+            except TypeError as e:
+                raise Exception('Parse Error: %s' % e, self.current_spot.name, ast.dump(body, False))
+        return self.rule_cache[rule_str]
 
 
     ## Handlers for specific internal functions used in the json logic.
@@ -420,14 +425,14 @@ class Rule_AST_Transformer(ast.NodeTransformer):
         if self.world.ensure_tod_access:
             # tod has DAY or (tod == NONE and (ss or find a path from a provider))
             # parsing is better than constructing this expression by hand
-            return ast.parse("(tod & TimeOfDay.DAY) if tod else (state.has_all_of(('Ocarina', 'Suns Song')) or state.playthrough.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAY))", mode='eval').body
+            return ast.parse("(tod & TimeOfDay.DAY) if tod else (state.has_all_of(('Ocarina', 'Suns Song')) or state.search.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAY))", mode='eval').body
         return ast.NameConstant(True)
 
     def at_dampe_time(self, node):
         if self.world.ensure_tod_access:
             # tod has DAMPE or (tod == NONE and (find a path from a provider))
             # parsing is better than constructing this expression by hand
-            return ast.parse("(tod & TimeOfDay.DAMPE) if tod else state.playthrough.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAMPE)", mode='eval').body
+            return ast.parse("(tod & TimeOfDay.DAMPE) if tod else state.search.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAMPE)", mode='eval').body
         return ast.NameConstant(True)
 
     def at_night(self, node):
@@ -437,7 +442,7 @@ class Rule_AST_Transformer(ast.NodeTransformer):
         if self.world.ensure_tod_access:
             # tod has DAMPE or (tod == NONE and (ss or find a path from a provider))
             # parsing is better than constructing this expression by hand
-            return ast.parse("(tod & TimeOfDay.DAMPE) if tod else (state.has_all_of(('Ocarina', 'Suns Song')) or state.playthrough.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAMPE))", mode='eval').body
+            return ast.parse("(tod & TimeOfDay.DAMPE) if tod else (state.has_all_of(('Ocarina', 'Suns Song')) or state.search.can_reach(spot.parent_region, age=age, tod=TimeOfDay.DAMPE))", mode='eval').body
         return ast.NameConstant(True)
 
 

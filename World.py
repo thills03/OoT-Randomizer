@@ -12,7 +12,7 @@ from LocationList import business_scrubs
 from Region import Region, TimeOfDay
 from Rules import set_rules, set_shop_rules
 from RuleParser import Rule_AST_Transformer
-from SettingsList import get_setting_info
+from SettingsList import get_setting_info, get_settings_from_section
 from State import State
 from Utils import read_json
 
@@ -142,6 +142,11 @@ class World(object):
     def resolve_random_settings(self):
         # evaluate settings (important for logic, nice for spoiler)
         self.randomized_list = []
+        if self.randomize_settings:
+            setting_info = get_setting_info('randomize_settings')
+            self.randomized_list.extend(setting_info.disable[True]['settings'])
+            for section in setting_info.disable[True]['sections']:
+                self.randomized_list.extend(get_settings_from_section(section))
         if self.big_poe_count_random:
             self.big_poe_count = random.randint(1, 10)
             self.randomized_list.append('big_poe_count')
@@ -464,11 +469,15 @@ class World(object):
 
 
     def get_unfilled_locations(self):
-        return [location for location in self.get_locations() if location.item is None]
+        return filter(Location.has_no_item, self.get_locations())
 
 
     def get_filled_locations(self):
-        return [location for location in self.get_locations() if location.item is not None]
+        return filter(Location.has_item, self.get_locations())
+
+
+    def get_progression_locations(self):
+        return filter(Location.has_progression_item, self.get_locations())
 
 
     def get_entrances(self):
@@ -543,8 +552,8 @@ class World(object):
             self.shuffle_scrubs == 'off' and not self.shuffle_grotto_entrances):
             # nayru's love may be required to prevent forced damage
             exclude_item_list.append('Nayrus Love')
-        if self.hints != 'agony':
-            # Stone of Agony only required if it's used for hints
+        if self.logic_grottos_without_agony and self.hints != 'agony':
+            # Stone of Agony skippable if not used for hints or grottos
             exclude_item_list.append('Stone of Agony')
         if not self.shuffle_special_indoor_entrances and not self.shuffle_overworld_entrances:
             # Serenade and Prelude are never required with vanilla Links House/ToT and overworld entrances
